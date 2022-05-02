@@ -11,6 +11,8 @@
 using namespace cv;
 using namespace std;
 
+enum COLOR {B, G, R};
+
 void testOpenImage()
 {
 	char fname[MAX_PATH];
@@ -23,10 +25,66 @@ void testOpenImage()
 	}
 }
 
-void histogramEqualization() {
+vector<int> h(Mat src, COLOR c) {
+	vector<int> h(256, 0);
 
+	for (int i = 0; i < src.rows; i++)
+		for (int j = 0; j < src.cols; j++) {
+			h[src.at<Vec3b>(i, j)[c]]++;
+		}
+
+	return h;
 }
 
+vector<float> p(Mat src, COLOR c) {
+	vector<float> p(256);
+	vector<int> h1 = h(src, c);
+	float M = src.rows * src.cols;
+
+	for (int i = 0; i < 256; i++)
+		p[i] = h1[i] / M;
+
+	return p;
+}
+
+Mat histogramEqualization_gray(Mat src, COLOR c) {
+	Mat dest(src.rows, src.cols, CV_8UC1, Scalar(255));
+
+	vector<float> pd = p(src, c);
+	vector<float> pc;
+	pc.push_back(0.);
+
+	for (int i = 1; i < pd.size(); i++) {
+		pc.push_back(pc[i - 1] + pd[i]);
+	}
+
+	for (int i = 0; i < src.rows; i++)
+		for (int j = 0; j < src.cols; j++) {
+			int nw = 255 * pc[src.at<Vec3b>(i, j)[c]];
+			if (nw > 255)
+				dest.at<uchar>(i, j) = 255;
+			else if (nw < 0)
+				dest.at<uchar>(i, j) = 0;
+			else dest.at<uchar>(i, j) = nw;
+		}
+	return dest;
+}
+
+Mat histogramEqualization(Mat src) {
+	Mat destB = histogramEqualization_gray(src, B);
+	Mat destG = histogramEqualization_gray(src, G);
+	Mat destR = histogramEqualization_gray(src, R);
+	
+	Mat dest(src.rows, src.cols, CV_8UC3);
+
+	for (int i = 0; i < src.rows; i++)
+		for (int j = 0; j < src.cols; j++) {
+			dest.at<Vec3b>(i, j)[B] = destB.at<uchar>(i, j);
+			dest.at<Vec3b>(i, j)[G] = destG.at<uchar>(i, j);
+			dest.at<Vec3b>(i, j)[R] = destR.at<uchar>(i, j);
+		}
+	return dest;
+}
 
 bool isInside(Mat img, int i, int j) {
 	if (i >= 0 && i < img.rows && j >= 0 && j < img.cols)
@@ -97,7 +155,9 @@ Mat convertToHue(Mat src) {
 	Mat dstH = Mat(height, width, CV_8UC1);
 	Mat dstS = Mat(height, width, CV_8UC1);
 	Mat dstV = Mat(height, width, CV_8UC1);
-	Mat dst = src.clone();
+
+	Mat hsv = Mat(height, width, CV_8UC3);
+	
 	for (int i = 0; i < height; i++) {
 		for (int j = 0; j < width; j++) {
 			Vec3b vals = src.at<Vec3b>(i, j);
@@ -128,27 +188,52 @@ Mat convertToHue(Mat src) {
 			dstH.at<uchar>(i, j) = H_norm;
 			dstS.at<uchar>(i, j) = S_norm;
 			dstV.at<uchar>(i, j) = V_norm;
-		}
-	}
-	for (int i = 0; i < height; i++) {
-		for (int j = 0; j < width; j++) {
-			if (!((dstH.at<uchar>(i, j) >= 244 && dstH.at<uchar>(i, j) <= 255) || (dstH.at<uchar>(i, j) >= 0 && dstH.at<uchar>(i, j) <= 11) ||
-				(dstH.at<uchar>(i, j) >= 149 && dstH.at<uchar>(i, j) <= 181)))
-				// below: values from medium.com
-			/*if((dstH.at<uchar>(i,j) >= 0 && dstS.at<uchar>(i, j) >= 70 && dstV.at<uchar>(i, j) >= 60) && 
-				(dstH.at<uchar>(i, j) <= 10 && dstS.at<uchar>(i, j) <= 255 && dstV.at<uchar>(i, j) <= 255)
-				||
-				(dstH.at<uchar>(i, j) >= 170 && dstS.at<uchar>(i, j) >= 70 && dstV.at<uchar>(i, j) >= 60) &&
-				(dstH.at<uchar>(i, j) <= 180 && dstS.at<uchar>(i, j) <= 255 && dstV.at<uchar>(i, j) <= 255)
-				||
-				(dstH.at<uchar>(i, j) >= 94 && dstS.at<uchar>(i, j) >= 127 && dstV.at<uchar>(i, j) >= 20) &&
-				(dstH.at<uchar>(i, j) <= 126 && dstS.at<uchar>(i, j) <= 255 && dstV.at<uchar>(i, j) <= 200)
-				)*/
-			dst.at<Vec3b>(i, j) = Vec3b(0, 0, 0);
+			//hsv.at<Vec3b>(i, j)[0] = H_norm;
+			//hsv.at<Vec3b>(i, j)[1] = S_norm;
+			//hsv.at<Vec3b>(i, j)[2] = V_norm;
+
 		}
 	}
 
-	return dst;
+	cvtColor(src, hsv, COLOR_BGR2HSV);
+	Mat maskRL(height, width, CV_8UC1);// = src.clone();
+	Mat maskRU(height, width, CV_8UC1);
+	Mat maskR(height, width, CV_8UC1);
+	Mat maskB(height, width, CV_8UC1);
+	Mat mask(height, width, CV_8UC1);
+	Mat dst0(height, width, CV_8UC3);
+	inRange(hsv, Scalar(0, 70, 60), Scalar(15, 255, 255), maskRL);
+	inRange(hsv, Scalar(160, 70, 60), Scalar(180, 255, 255), maskRU);
+	bitwise_or(maskRL, maskRU, maskR);
+
+	inRange(hsv, Scalar(100, 127, 0), Scalar(140, 255, 255), maskB);
+	bitwise_or(maskR, maskB, mask);
+
+	bitwise_and(src, src, dst0, mask);
+
+	Mat dst = src.clone();
+	for (int i = 0; i < height; i++) {
+		for (int j = 0; j < width; j++) {
+			if ((dstH.at<uchar>(i, j) >= 244 && dstH.at<uchar>(i, j) <= 250) || 
+				(dstH.at<uchar>(i, j) >= 0 && dstH.at<uchar>(i, j) <= 11) ||
+				(dstH.at<uchar>(i, j) >= 149 && dstH.at<uchar>(i, j) <= 181))
+
+				// below: values from medium.com
+			/*if (((dstH.at<uchar>(i, j) >= 0 && dstS.at<uchar>(i, j) >= 70 && dstV.at<uchar>(i, j) >= 60) &&
+				(dstH.at<uchar>(i, j) <= 10 && dstS.at<uchar>(i, j) <= 255 && dstV.at<uchar>(i, j) <= 255))
+				||
+				((dstH.at<uchar>(i, j) >= 170 && dstS.at<uchar>(i, j) >= 70 && dstV.at<uchar>(i, j) >= 60) &&
+					(dstH.at<uchar>(i, j) <= 180 && dstS.at<uchar>(i, j) <= 255 && dstV.at<uchar>(i, j) <= 255))
+				||
+				((dstH.at<uchar>(i, j) >= 100 && dstS.at<uchar>(i, j) >= 127 && dstV.at<uchar>(i, j) >= 0) &&
+					(dstH.at<uchar>(i, j) <= 140 && dstS.at<uchar>(i, j) <= 255 && dstV.at<uchar>(i, j) <= 255)))*/
+				continue;
+
+			else dst.at<Vec3b>(i, j) = Vec3b(0, 0, 0);
+		}
+	}
+
+	return dst0;
 }
 
 
@@ -170,7 +255,7 @@ int main(){
 	while (openFileDlg(fname)) {
 		Mat src;
 		src = imread(fname);
-		imshow("image", convertToHue(src));
+		imshow("image", convertToHue(histogramEqualization(src)));
 		waitKey();
 	}
 	return 0;
