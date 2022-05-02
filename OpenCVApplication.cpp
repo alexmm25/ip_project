@@ -214,26 +214,26 @@ Mat convertToHue(Mat src) {
 	Mat dst = src.clone();
 	for (int i = 0; i < height; i++) {
 		for (int j = 0; j < width; j++) {
-			if ((dstH.at<uchar>(i, j) >= 244 && dstH.at<uchar>(i, j) <= 250) || 
+			/*if ((dstH.at<uchar>(i, j) >= 244 && dstH.at<uchar>(i, j) <= 250) || 
 				(dstH.at<uchar>(i, j) >= 0 && dstH.at<uchar>(i, j) <= 11) ||
-				(dstH.at<uchar>(i, j) >= 149 && dstH.at<uchar>(i, j) <= 181))
+				(dstH.at<uchar>(i, j) >= 149 && dstH.at<uchar>(i, j) <= 181))*/
 
 				// below: values from medium.com
-			/*if (((dstH.at<uchar>(i, j) >= 0 && dstS.at<uchar>(i, j) >= 70 && dstV.at<uchar>(i, j) >= 60) &&
-				(dstH.at<uchar>(i, j) <= 10 && dstS.at<uchar>(i, j) <= 255 && dstV.at<uchar>(i, j) <= 255))
+			if (((dstH.at<uchar>(i, j) >= 0 && dstS.at<uchar>(i, j) >= 70 && dstV.at<uchar>(i, j) >= 60) &&
+				(dstH.at<uchar>(i, j) <= 25 && dstS.at<uchar>(i, j) <= 255 && dstV.at<uchar>(i, j) <= 255))
 				||
-				((dstH.at<uchar>(i, j) >= 170 && dstS.at<uchar>(i, j) >= 70 && dstV.at<uchar>(i, j) >= 60) &&
-					(dstH.at<uchar>(i, j) <= 180 && dstS.at<uchar>(i, j) <= 255 && dstV.at<uchar>(i, j) <= 255))
+				((dstH.at<uchar>(i, j) >= 340 && dstS.at<uchar>(i, j) >= 70 && dstV.at<uchar>(i, j) >= 60) &&
+					(dstH.at<uchar>(i, j) <= 360 && dstS.at<uchar>(i, j) <= 255 && dstV.at<uchar>(i, j) <= 255))
 				||
-				((dstH.at<uchar>(i, j) >= 100 && dstS.at<uchar>(i, j) >= 127 && dstV.at<uchar>(i, j) >= 0) &&
-					(dstH.at<uchar>(i, j) <= 140 && dstS.at<uchar>(i, j) <= 255 && dstV.at<uchar>(i, j) <= 255)))*/
+				((dstH.at<uchar>(i, j) >= 200 && dstS.at<uchar>(i, j) >= 127 && dstV.at<uchar>(i, j) >= 0) &&
+					(dstH.at<uchar>(i, j) <= 280 && dstS.at<uchar>(i, j) <= 255 && dstV.at<uchar>(i, j) <= 255)))
 				continue;
 
 			else dst.at<Vec3b>(i, j) = Vec3b(0, 0, 0);
 		}
 	}
 
-	return dst0;
+	return dst;
 }
 
 
