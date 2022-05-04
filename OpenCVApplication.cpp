@@ -7,6 +7,7 @@
 #include "common.h"
 #include <opencv2/opencv.hpp>
 #include <iostream>
+#include <numeric>
 
 using namespace cv;
 using namespace std;
@@ -155,8 +156,6 @@ Mat convertToHue(Mat src) {
 	Mat dstH = Mat(height, width, CV_8UC1);
 	Mat dstS = Mat(height, width, CV_8UC1);
 	Mat dstV = Mat(height, width, CV_8UC1);
-
-	Mat hsv = Mat(height, width, CV_8UC3);
 	
 	for (int i = 0; i < height; i++) {
 		for (int j = 0; j < width; j++) {
@@ -188,28 +187,8 @@ Mat convertToHue(Mat src) {
 			dstH.at<uchar>(i, j) = H_norm;
 			dstS.at<uchar>(i, j) = S_norm;
 			dstV.at<uchar>(i, j) = V_norm;
-			//hsv.at<Vec3b>(i, j)[0] = H_norm;
-			//hsv.at<Vec3b>(i, j)[1] = S_norm;
-			//hsv.at<Vec3b>(i, j)[2] = V_norm;
-
 		}
 	}
-
-	cvtColor(src, hsv, COLOR_BGR2HSV);
-	Mat maskRL(height, width, CV_8UC1);// = src.clone();
-	Mat maskRU(height, width, CV_8UC1);
-	Mat maskR(height, width, CV_8UC1);
-	Mat maskB(height, width, CV_8UC1);
-	Mat mask(height, width, CV_8UC1);
-	Mat dst0(height, width, CV_8UC3);
-	inRange(hsv, Scalar(0, 70, 60), Scalar(15, 255, 255), maskRL);
-	inRange(hsv, Scalar(160, 70, 60), Scalar(180, 255, 255), maskRU);
-	bitwise_or(maskRL, maskRU, maskR);
-
-	inRange(hsv, Scalar(100, 127, 0), Scalar(140, 255, 255), maskB);
-	bitwise_or(maskR, maskB, mask);
-
-	bitwise_and(src, src, dst0, mask);
 
 	Mat dst = src.clone();
 	for (int i = 0; i < height; i++) {
@@ -236,26 +215,137 @@ Mat convertToHue(Mat src) {
 	return dst;
 }
 
+pair<Mat, Mat> convertToHSV(Mat src) {
+	int height = src.rows;
+	int width = src.cols;
+
+	Mat hsv = Mat(height, width, CV_8UC3);
+	cvtColor(src, hsv, COLOR_BGR2HSV);
+
+	Mat maskRL(height, width, CV_8UC1);
+	Mat maskRU(height, width, CV_8UC1);
+	Mat maskR(height, width, CV_8UC1);
+	Mat maskB(height, width, CV_8UC1);
+	Mat mask(height, width, CV_8UC1);
+
+	Mat dstR(height, width, CV_8UC3);
+	Mat dstB(height, width, CV_8UC3);
+
+	inRange(hsv, Scalar(0, 70, 60), Scalar(15, 255, 255), maskRL);
+	inRange(hsv, Scalar(160, 70, 60), Scalar(180, 255, 255), maskRU);
+	bitwise_or(maskRL, maskRU, maskR);
+
+	bitwise_and(src, src, dstR, maskR);
+
+	inRange(hsv, Scalar(100, 127, 0), Scalar(140, 255, 255), maskB);
+	//bitwise_or(maskR, maskB, mask);
+
+	bitwise_and(src, src, dstB, maskB);
+
+	return make_pair(dstR, dstB);
+}
+
+pair<Mat, Mat> augment(pair<Mat, Mat> src) {
+	Mat Bb, Bg, Br, Rb, Rg, Rr, B, R;
+
+	extractChannel(src.second, Bb, 0);
+	extractChannel(src.second, Bg, 1);
+	extractChannel(src.second, Br, 2);
+
+	extractChannel(src.first, Rb, 0);
+	extractChannel(src.first, Rg, 1);
+	extractChannel(src.first, Rr, 2);
+
+	Bb = -0.5 * Br + 3 * Bb - 2 * Bg;
+	Rr = 2 * Rr - 0.5 * Rb - 2 * Rg;
+
+	merge(vector<Mat>({ Bb, Bg, Br }), B);
+	merge(vector<Mat>({ Rb, Rg, Rr }), R);
+
+	return make_pair(R, B);
+}
+
+vector<Rect> nonMaximumSuppression(vector<Rect> boxes, float overlap_threshold)
+{
+	vector<float> areas;
+	vector<Rect> pick;          //indices of final detection boxes
+
+	if (boxes.size() == 0)
+		return pick;
+
+	for (Rect box: boxes)
+		areas.push_back(box.area());
+
+	vector<size_t> idxs(boxes.size());
+	iota(idxs.begin(), idxs.end(), 0);
+	stable_sort(idxs.begin(), idxs.end(), [&boxes](size_t i1, size_t i2) {return boxes[i1].area() < boxes[i2].area(); });
+
+	while (idxs.size() > 0)         
+	{
+		int last = idxs.size() - 1;
+		int i = idxs[last];
+		pick.push_back(boxes[i]);          
+
+		vector<int> suppress;
+		suppress.push_back(last);
+
+		for (int pos = 0; pos < last; pos++)     
+		{
+			int j = idxs[pos];
+
+			int xx1 = max(boxes[i].x, boxes[j].x);         
+			int yy1 = max(boxes[i].y, boxes[j].y);         
+			int xx2 = min(boxes[i].br().x, boxes[j].br().x);    
+			int yy2 = min(boxes[i].br().y, boxes[j].br().y);    
+
+			int w = max(0, xx2 - xx1 + 1);     
+			int h = max(0, yy2 - yy1 + 1);   
+
+			float overlap = float(w * h) / areas[j];
+
+			if (overlap > overlap_threshold)       
+				suppress.push_back(pos);
+		}
+
+		for (int p: suppress) {
+			idxs[p] = -1;
+		}
+
+		for (int p = 0; p < idxs.size();)
+		{
+			if (idxs[p] == -1)
+				idxs.erase(idxs.begin() + p);
+			else
+				p++;
+		}
+
+	}
+
+	return pick;
+}
 
 Mat mser(Mat img) {
-	Ptr<MSER> ms = MSER::create(8, 400, 4000);
+	Ptr<MSER> ms = MSER::create(8, 200, 999000, 0.4, 0.4, 50, 1.0091);
 	vector<vector<Point>> regions;
-	vector<cv::Rect> mser_bbox;
+	vector<Rect> mser_bbox;
 	ms->detectRegions(img, regions, mser_bbox);
 
-	for (int i = 0; i < regions.size(); i++)
-		rectangle(img, mser_bbox[i], CV_RGB(0, 255, 0));
+	for (Rect box: nonMaximumSuppression(mser_bbox, 0.1))
+		rectangle(img, box, CV_RGB(255, 255, 255));
+
 	return img;
 }
 
 int main(){
-	// filtered_b = -0.5 * filtered_r + 3 * filtered_b - 2 * filtered_g
-	// filtered_r = 4 * filtered_r - 0.5 * filtered_b - 2 * filtered_g
 	char fname[MAX_PATH];
 	while (openFileDlg(fname)) {
 		Mat src;
 		src = imread(fname);
-		imshow("image", convertToHue(histogramEqualization(src)));
+
+		pair<Mat, Mat> dst = augment(convertToHSV(histogramEqualization(src)));
+
+		imshow("R", mser(dst.first));
+		imshow("B", mser(dst.second));
 		waitKey();
 	}
 	return 0;
