@@ -3,16 +3,24 @@
 
 // https://drive.google.com/drive/folders/1fR3JeLpuCHtY7MtybVr9QGzB8bzxrZ3V <- python project
 
+//HOG sau border tracing dupa mser si canny
+
 #include "stdafx.h"
 #include "common.h"
 #include <opencv2/opencv.hpp>
 #include <iostream>
 #include <numeric>
 
+#include "canny.h"
+
 using namespace cv;
 using namespace std;
 
-enum COLOR { B, G, R };
+enum COLOR {B, G, R};
+Scalar RED = Scalar(0, 0, 255);
+Scalar BLUE = Scalar(255, 0, 0);
+
+
 
 void testOpenImage()
 {
@@ -75,7 +83,7 @@ Mat histogramEqualization(Mat src) {
 	Mat destB = histogramEqualization_gray(src, B);
 	Mat destG = histogramEqualization_gray(src, G);
 	Mat destR = histogramEqualization_gray(src, R);
-
+	
 	Mat dest(src.rows, src.cols, CV_8UC3);
 
 	for (int i = 0; i < src.rows; i++)
@@ -107,15 +115,23 @@ Mat erosion(Mat src, Mat structuralElem) {
 	Mat dst = src.clone();
 	int SEi = structuralElem.rows / 2;
 	int SEj = structuralElem.cols / 2;
-	for (int i = 0; i < src.rows; i++) 
-		for (int j = 0; j < src.cols; j++) 
-			if (src.at<Vec3b>(i, j) == Vec3b(0,0,0)) 
-				for (int ii = 0; ii < structuralElem.rows; ii++) 
-					for (int jj = 0; jj < structuralElem.cols; jj++) 
-						if (structuralElem.at<Vec3b>(ii, jj) == Vec3b(0, 0, 0))
-							if (isInside(src, i + ii - SEi, j + jj - SEj)) 
-								if (src.at<Vec3b>(i + ii - SEi, j + jj - SEj) != Vec3b(0, 0, 0))
-									dst.at<Vec3b>(i, j) = src.at<Vec3b>(i,j);
+	for (int i = 0; i < src.rows; i++) {
+		for (int j = 0; j < src.cols; j++) {
+			if (src.at<uchar>(i, j) == 0) {
+				dst.at<uchar>(i, j) = 0;
+				for (int ii = 0; ii < structuralElem.rows; ii++) {
+					for (int jj = 0; jj < structuralElem.cols; jj++) {
+						if (structuralElem.at<uchar>(ii, jj) == 0) {
+							if (isInside(src, i + ii - SEi, j + jj - SEj)) {
+								if (src.at<uchar>(i + ii - SEi, j + jj - SEj) == 255)
+									dst.at<uchar>(i, j) = 255;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 	return dst;
 }
 
@@ -123,14 +139,22 @@ Mat dilation(Mat src, Mat structuralElem) {
 	Mat dst = src.clone();
 	int SEi = structuralElem.rows / 2;
 	int SEj = structuralElem.cols / 2;
-	for (int i = 0; i < src.rows; i++) 
-		for (int j = 0; j < src.cols; j++) 
-			if (src.at<Vec3b>(i, j) == Vec3b(0,0,0)) 
-				for (int ii = 0; ii < structuralElem.rows; ii++) 
-					for (int jj = 0; jj < structuralElem.cols; jj++)
-						if (structuralElem.at<Vec3b>(ii, jj) == Vec3b(0, 0, 0))
-							if (isInside(src, i + ii - SEi, j + jj - SEj)) 
-								dst.at<Vec3b>(i + ii - SEi, j + jj - SEj) = Vec3b(0, 0, 0);
+	for (int i = 0; i < src.rows; i++) {
+		for (int j = 0; j < src.cols; j++) {
+			if (src.at<uchar>(i, j) == 0) {
+				dst.at<uchar>(i, j) = 0;
+				for (int ii = 0; ii < structuralElem.rows; ii++) {
+					for (int jj = 0; jj < structuralElem.cols; jj++) {
+						if (structuralElem.at<uchar>(ii, jj) == 0) {
+							if (isInside(src, i + ii - SEi, j + jj - SEj)) {
+								dst.at<uchar>(i + ii - SEi, j + jj - SEj) = 0;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 	return dst;
 }
 
@@ -140,7 +164,7 @@ Mat convertToHue(Mat src) {
 	Mat dstH = Mat(height, width, CV_8UC1);
 	Mat dstS = Mat(height, width, CV_8UC1);
 	Mat dstV = Mat(height, width, CV_8UC1);
-
+	
 	for (int i = 0; i < height; i++) {
 		for (int j = 0; j < width; j++) {
 			Vec3b vals = src.at<Vec3b>(i, j);
@@ -177,6 +201,11 @@ Mat convertToHue(Mat src) {
 	Mat dst = src.clone();
 	for (int i = 0; i < height; i++) {
 		for (int j = 0; j < width; j++) {
+			/*if ((dstH.at<uchar>(i, j) >= 244 && dstH.at<uchar>(i, j) <= 250) || 
+				(dstH.at<uchar>(i, j) >= 0 && dstH.at<uchar>(i, j) <= 11) ||
+				(dstH.at<uchar>(i, j) >= 149 && dstH.at<uchar>(i, j) <= 181))*/
+
+				// below: values from medium.com
 			if (((dstH.at<uchar>(i, j) >= 0 && dstS.at<uchar>(i, j) >= 70 && dstV.at<uchar>(i, j) >= 60) &&
 				(dstH.at<uchar>(i, j) <= 25 && dstS.at<uchar>(i, j) <= 255 && dstV.at<uchar>(i, j) <= 255))
 				||
@@ -244,6 +273,77 @@ pair<Mat, Mat> augment(pair<Mat, Mat> src) {
 	return make_pair(R, B);
 }
 
+pair<vector<Rect>, vector<vector<Point>>> nonMaximumSuppression(vector<Rect> boxes, vector<vector<Point>> regions, float overlap_threshold)
+{
+	vector<float> areas;
+	pair<vector<Rect>, vector<vector<Point>>> pick;          //indices of final detection boxes
+
+	for (Rect box: boxes)
+		areas.push_back(box.area());
+
+	vector<size_t> idxs(areas.size());
+	iota(idxs.begin(), idxs.end(), 0);
+	stable_sort(idxs.begin(), idxs.end(), [&areas](size_t i1, size_t i2) {return areas[i1] < areas[i2]; });
+
+	while (idxs.size() > 0)         
+	{
+		int last = idxs.size() - 1;
+		int i = idxs[last];
+		pick.first.push_back(boxes[i]);
+		pick.second.push_back(regions[i]);
+
+		vector<int> suppress;
+		suppress.push_back(last);
+
+		for (int pos = 0; pos < last; pos++)     
+		{
+			int j = idxs[pos];
+
+			int xx1 = max(boxes[i].x, boxes[j].x);         
+			int yy1 = max(boxes[i].y, boxes[j].y);         
+			int xx2 = min(boxes[i].br().x, boxes[j].br().x);    
+			int yy2 = min(boxes[i].br().y, boxes[j].br().y);    
+
+			int w = max(0, xx2 - xx1 + 1);     
+			int h = max(0, yy2 - yy1 + 1);   
+
+			float overlap = float(w * h) / areas[j];
+
+			if (overlap > overlap_threshold)       
+				suppress.push_back(pos);
+		}
+
+		for (int p: suppress) {
+			idxs[p] = -1;
+		}
+
+		for (int p = 0; p < idxs.size();)
+		{
+			if (idxs[p] == -1)
+				idxs.erase(idxs.begin() + p);
+			else
+				p++;
+		}
+	}
+	return pick;
+}
+
+vector<vector<Point>> mser(Mat img, COLOR c) {
+	Ptr<MSER> ms = MSER::create(5, 200, 999000, 0.4, 0.4, 50, 1.0091);
+	vector<vector<Point>> regions;
+	vector<Rect> mser_bbox;
+	ms->detectRegions(img, regions, mser_bbox);
+
+	pair<vector<Rect>, vector<vector<Point>>> supressed = nonMaximumSuppression(mser_bbox, regions, 0.1);
+
+	for (Rect box: supressed.first)
+		rectangle(img, box, CV_RGB(255, 255, 255));
+
+	imshow("mser"+c, img);
+
+	return supressed.second;
+}
+
 vector<Rect> nonMaximumSuppression(vector<Rect> boxes, float overlap_threshold)
 {
 	vector<float> areas;
@@ -301,37 +401,149 @@ vector<Rect> nonMaximumSuppression(vector<Rect> boxes, float overlap_threshold)
 	return pick;
 }
 
-bool sortBySecondElement(const pair<int, int> &a, const pair<int, int> &b) {
+bool sortBySecondElement(const pair<int, int>& a, const pair<int, int>& b) {
 	return (a.second > b.second);
 }
 
-Mat mser(Mat img) {
+Mat mser(Mat src, Mat canny) {
+	Mat img = src.clone();
+
 	Ptr<MSER> ms = MSER::create(8, 200, 999000, 0.4, 0.4, 50, 1.0091);
 	vector<vector<Point>> regions;
 	vector<Rect> mser_bbox;
 	ms->detectRegions(img, regions, mser_bbox);
 
 	vector<Rect> boxes = nonMaximumSuppression(mser_bbox, 0.1);
+	vector<Rect> boxesChecked;
+	vector<Rect> boxesCanny;
 	vector<pair<int, int>> indexedSizes;
-	
+
 	for (int i = 0; i < boxes.size(); i++)
 		indexedSizes.push_back(make_pair(i, boxes[i].height * boxes[i].width));
 
 	sort(indexedSizes.begin(), indexedSizes.end(), sortBySecondElement);
-	
-	// stop variable is needed because "i < 5" doesn't work as for stopping condition
-	int stop = 0;
-	for (int i = 0; i < boxes.size(); i++) {
+
+	for (int i = 0; i < (int) boxes.size(); i++) {
+		float ratio2 = boxes[indexedSizes[i].first].height / (float)boxes[indexedSizes[i].first].width;
+		float ratio1 = boxes[indexedSizes[i].first].width / (float)boxes[indexedSizes[i].first].height;
+
+		if (ratio1 <= 0.5 || ratio1 > 1.2)
+			continue;
+		if (ratio2 <= 0.5)
+			continue;
+
+		//rectangle(img, boxes[indexedSizes[i].first], CV_RGB(255, 255, 255));
+		boxesChecked.push_back(boxes[indexedSizes[i].first]);
+	}
+
+	for(int i = 0; i < canny.rows; i++) 
+		for (int j = 0; j < canny.cols; j++) {
+			if (canny.at<uchar>(i, j) == 255)
+				for (auto box = boxesChecked.begin(); box != boxesChecked.end(); box++) {
+				if ((*box).contains(Point2i(i, j))) {
+					boxesCanny.push_back(*box);
+					boxesChecked.erase(box--);
+				}
+			}
+		}
+
+	/*int stop = 0;
+	for (int i = 0; i < (int)boxesChecked.size(); i++) {
 		if (stop == 4) break;
-		rectangle(img, boxes[indexedSizes[i].first], CV_RGB(255, 255, 255));
+		rectangle(img, boxesChecked[indexedSizes[i].first], CV_RGB(255, 255, 255));
 		stop++;
+	}*/
+
+	for (Rect box : boxesCanny) {
+		rectangle(img, box, CV_RGB(255, 255, 255));
 	}
 	return img;
 }
 
-pair<Mat, Mat> clearOpening(pair<Mat, Mat> dst) {
-	return make_pair(dilation(erosion(mser(dst.first), getStructuralElem()), getStructuralElem()),
-		dilation(erosion(mser(dst.second), getStructuralElem()), getStructuralElem()));
+Mat convexHulls(vector<vector<Point>> regions, int rows, int cols, Scalar color) {
+	vector<vector<Point>> hulls;
+	for (vector<Point> r : regions) {
+		vector<Point> hull;
+		convexHull(r, hull);
+		hulls.push_back(hull);
+	}
+	Mat img(rows, cols, CV_8UC3, Scalar(0));
+	fillPoly(img, hulls, color);
+	return img;
+}
+
+#define P 5
+int SE[2][P] = { {0, 0, 0, -1, 1},
+							  {0, -1, 1, 0, 0} };
+
+void apply(Mat& dest, int i, int j, int val, Mat src) {
+	int cnt = 0;
+
+	for (int k = 0; k < P; k++) {
+		int x = i + SE[0][k], y = j + SE[1][k];
+
+		if (x < 0)
+			x = 0;
+		if (y < 0)
+			y = 0;
+		if (y >= src.rows)
+			y = src.rows - 1;
+		if (x >= src.cols)
+			x = src.cols - 1;
+
+		if (src.at<uchar>(x, y) == 0)
+			cnt++;
+
+		if (val == 0)
+			dest.at<uchar>(x, y) = val;
+	}
+
+	if (cnt == P && val == 255)
+		dest.at<uchar>(i, j) = 0;
+	else if (val == 255) {
+		dest.at<uchar>(i, j) = 255;
+	}
+}
+
+Mat dilation(Mat src) {
+	Mat dest = src.clone();
+
+	for (int i = 0; i < src.rows; i++)
+		for (int j = 0; j < src.cols; j++) {
+			if (src.at<uchar>(i, j) == 0) {
+				apply(dest, i, j, 0, src);
+			}
+		}
+
+	return dest;
+}
+
+Mat erosion(Mat src) {
+	Mat dest = src.clone();
+
+	for (int i = 0; i < src.rows; i++)
+		for (int j = 0; j < src.cols; j++) {
+			if (src.at<uchar>(i, j) == 0) {
+				apply(dest, i, j, 255, src);
+			}
+		}
+
+	return dest;
+}
+
+Mat clearRegions(Mat src) {
+	Mat Rc, Gc, Bc, dst;
+
+	extractChannel(src, Rc, R);
+	extractChannel(src, Gc, G);
+	extractChannel(src, Bc, B);
+
+	merge(vector<Mat>{ dilation(erosion(Bc, Mat(3, 3, CV_8UC1, Scalar(1)))), Gc, dilation(erosion(Rc, Mat(3, 3, CV_8UC1, Scalar(1)))) }, dst);
+	return dst;
+}
+
+Mat clearOpening(Mat dst) {
+	return dilation(erosion(dst, getStructuralElem()), getStructuralElem());
 }
 
 void detectSigns(Mat src, Mat blue, Mat red) {
@@ -340,15 +552,36 @@ void detectSigns(Mat src, Mat blue, Mat red) {
 			if (blue.at<Vec3b>(i, j) == Vec3b(255, 255, 255) || red.at<Vec3b>(i, j) == Vec3b(255, 255, 255))
 				src.at<Vec3b>(i, j) = Vec3b(255, 255, 255);
 	imshow("final", src);
-	waitKey(0);
 }
 
-int main() {
+int main(){
 	char fname[MAX_PATH];
 	while (openFileDlg(fname)) {
-		Mat src = imread(fname);
-		pair<Mat, Mat> dst = clearOpening(augment(convertToHSV(histogramEqualization(src))));
-		detectSigns(src, dst.first, dst.second);
+		Mat src;
+		src = imread(fname);
+		imshow("original", src);
+
+		int h = src.rows, w = src.cols;
+
+		//pair<Mat, Mat> dst = augment(convertToHSV(histogramEqualization(src)));
+		
+		
+		pair<Mat, Mat> dst = augment(convertToHSV(histogramEqualization(src)));
+
+		imshow("augmetn", dst.first);
+
+		//imshow("huls R", clearRegions(convexHulls(mser(dst.first, R), h, w, RED)));
+		//imshow("huls B", clearRegions(convexHulls(mser(dst.second, B), h , w, BLUE)));
+
+		Mat dstR = clearOpening(mser(dst.first, canny(dst.first, R)));
+		Mat dstB = clearOpening(mser(dst.second, canny(dst.second, B)));
+
+		mser(dstR, R);
+		detectSigns(src, dstR, dstB);
+
+		imshow("cannyB", canny(dst.second, B));
+		imshow("cannyR", canny(dst.first, R));
+		waitKey();
 	}
 	return 0;
 }
