@@ -69,28 +69,32 @@ vector<Rect> ratioCheck(int rows, int cols, vector<Rect> boxes) {
 	vector<pair<int, int>> indexedSizes;
 
 	for (int i = 0; i < boxes.size(); i++) 
-		indexedSizes.push_back(make_pair(i, boxes[i].height * boxes[i].width));
+		indexedSizes.push_back(make_pair(i, boxes[i].area()));
 
 	stable_sort(indexedSizes.begin(), indexedSizes.end(), [](pair<int, int> a, pair<int, int> b) {return a.second > b.second;});
 
-	for (int i = 0; i < (int)boxes.size(); i++) {
-		float ratio2 = boxes[indexedSizes[i].first].height / (float)boxes[indexedSizes[i].first].width;
-		float ratio1 = boxes[indexedSizes[i].first].width / (float)boxes[indexedSizes[i].first].height;
+	int i = 0;
+	for (pair<int,int> index : indexedSizes) {
+		if (i == 3) break;
 
-		if (boxes[indexedSizes[i].first].height >= rows-1 || boxes[indexedSizes[i].first].width >= cols-1)
+		float ratio2 = boxes[index.first].height / (float)boxes[index.first].width;
+		float ratio1 = boxes[index.first].width / (float)boxes[index.first].height;
+
+		if (boxes[index.first].height >= rows - 1 || boxes[index.first].width >= cols - 1)
 			continue;
 		if (ratio1 <= 0.5 || ratio1 > 1.2)
 			continue;
 		if (ratio2 <= 0.5)
 			continue;
 
-		boxesChecked.push_back(boxes[indexedSizes[i].first]);
+		boxesChecked.push_back(boxes[index.first]);
+		i++;
 	}
 
 	return boxesChecked;
 }
 
-vector<Rect> mser(Mat src, Mat canny) {
+vector<Rect> mser(Mat src) {
 	Mat img = src.clone();
 
 	Ptr<MSER> ms = MSER::create(19, 400, 99990, 0.1);
@@ -98,23 +102,5 @@ vector<Rect> mser(Mat src, Mat canny) {
 	vector<Rect> mser_bbox;
 	ms->detectRegions(img, regions, mser_bbox);
 
-	vector<Rect> boxes = nonMaximumSuppression(ratioCheck(src.rows, src.cols, mser_bbox), 1.025);
-	vector<Rect> boxesCanny;
-
-	/*
-	for (int i = 0; i < canny.rows; i++)
-		for (int j = 0; j < canny.cols; j++) {
-			if (canny.at<uchar>(i, j) == 255)
-				for (auto box = boxesChecked.begin(); box != boxesChecked.end(); box++) {
-					if ((*box).contains(Point2i(i, j))) {
-						boxesCanny.push_back(*box);
-						boxesChecked.erase(box--);
-					}
-				}
-		}*/
-
-	//for (Rect box : boxesCanny) {
-		//rectangle(img, box, CV_RGB(255, 255, 255));
-	//}
-	return boxes;
+	return nonMaximumSuppression(ratioCheck(src.rows, src.cols, mser_bbox), 0.01);
 }

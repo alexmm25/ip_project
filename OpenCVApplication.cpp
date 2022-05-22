@@ -48,10 +48,10 @@ pair<Mat, Mat> augment(pair<Mat, Mat> src) {
 
 void detectSigns(Mat src, vector<Rect> blue, vector<Rect> red) {
 	for (Rect box : blue) {
-		rectangle(src, box, CV_RGB(255, 255, 255));
+		rectangle(src, box, CV_RGB(255, 255, 255), 2);
 	}
 	for (Rect box : red) {
-		rectangle(src, box, CV_RGB(255, 255, 255));
+		rectangle(src, box, CV_RGB(255, 255, 255), 2);
 	}
 	imshow("final", src);
 }
@@ -72,8 +72,8 @@ int main(){
 		Mat cannyR = canny(dstR);
 		Mat cannyB = canny(dstB);
 		detectSigns(src, 
-			checkHogs(dilation(cannyR), mser(dstR, cannyR)),
-			checkHogs(dilation(cannyB), mser(dstB, cannyB)));
+			checkHogs(dilation(cannyR), mser(dstR)),
+			checkHogs(dilation(cannyB), mser(dstB)));
 		waitKey();
 	}
 	return 0;

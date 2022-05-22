@@ -10,69 +10,34 @@ using namespace std;
 #include "hog.h"
 #include "canny.h"
 
-Point advance(Point p, int dir, int rows, int cols) {
-	if (dir != -1) {
-		int diry[8] = { 0, -1, -1, -1, 0, 1, 1, 1 };
-		int dirx[8] = { 1, 1, 0, -1, -1, -1, 0, 1 };
+float average(vector<int> v, int s, int e, int WH) {
+	float sum = 0;
 
-		p.x += dirx[dir];
-		p.y += diry[dir];
+	for (int i = s; i <= e; i++) {
+		sum += v[i];
 	}
-
-	if (p.x < 0)
-		p.x = 0;
-	if (p.y < 0)
-		p.y = 0;
-	if (p.y >= rows)
-		p.y = rows - 1;
-	if (p.x >= cols)
-		p.x = cols - 1;
-
-	return p;
+	return sum / (2 * WH + 1);
 }
 
-Mat borderTracing(Mat src) {
-	Mat contour(src.rows, src.cols, CV_8UC1, Scalar(0));
-	Point p0;
+vector<int> hMax(vector<int> hist) {
+	int WH = 7;
+	float TH = 0.0003;
 
-	imshow("before border", src);
-	for (int i = 0; i < src.rows; i++)
-		for (int j = 0; j < src.cols; j++) {
-			if (src.at<uchar>(i, j) == 255) {
-				p0.x = j;
-				p0.y = i;
-				i = src.rows + 1;
+	vector<int> hmax;
+	for (int k = WH; k <= 180 - WH; k++) {
+		float v = average(hist, k - WH, k + WH, WH);
+		bool greater = true;
+
+		for (int i = k - WH; i <= k + WH; i++) {
+			if (hist[k] < hist[i]) {
+				greater = false;
 				break;
 			}
 		}
-
-	int dir = 7, n = 0;
-	Point pn(p0), p1, pn_1;
-	bool stored = false;
-
-	do {
-		n++;
-		if (dir % 2 == 0)
-			dir = (dir + 7) % 8;
-		else dir = (dir + 6) % 8;
-
-		pn_1 = pn;
-		Point adv = advance(pn, dir, src.rows, src.cols);
-		int i = 0;
-		while (src.at<uchar>(adv) == 0 && i < 8) {
-			dir = (dir + 1) % 8;
-			adv = advance(pn, dir, src.rows, src.cols);
-			i++;
-		}
-		pn = adv;
-		if (!stored) {
-			p1 = pn;
-			stored = true;
-		}
-		contour.at<uchar>(pn) = 255;
-	} while (!((pn == p1) && (pn_1 == p0) && (n >= 2)) && n < 1000);
-
-	return contour;
+		if (greater && hist[k] > (v + TH))
+			hmax.push_back(k);
+	}
+	return hmax;
 }
 
 int showHistogram(const string& name, int* hist, const int  hist_cols, const int hist_height)
@@ -109,28 +74,33 @@ Mat contours(Mat src) {
 	return img;
 }
 
-int hog(Mat src) {
-	vector<int> hist(180);
-	imshow("border", src);
+bool hog(Mat src) {
+	vector<int> hist(180, 0);
 	pair<Mat, Mat> G = gradient(src);
+
 	for (int i = 0; i < src.rows; i++)
 		for (int j = 0; j < src.cols; j++) {
 			if (src.at<uchar>(i, j) == 255) {
 				int val = (int)(G.second.at<float>(i, j) * (180.0 / 3.141592653589793238463));
 				if (val < 0) val += 360;
 				if (val == 0) continue;
-				hist[val / 2]++;
+				hist[val / 2] += G.first.at<float>(i, j);
 			}
 		}
-	return showHistogram("hist", hist.data(), 180, 100);
+
+	//showHistogram("hist", hist.data(), 180, 100);
+	vector<int> histmax = hMax(hist); 
+	if (histmax.size() >= 3 && histmax.size() <= 11 || histmax.size() > 160)
+		return true;
+	else return false;
 }
 
 vector<Rect> checkHogs(Mat src, vector<Rect> boxes) {
 	vector<Rect> finalBoxes;
 	Mat img = contours(src);
 
-	for (Rect box : boxes) 
-		if (hog(Mat(img, box)) < 15)
+	for (Rect box : boxes)
+		if (hog(Mat(img, box)))
 			finalBoxes.push_back(box);
 	return finalBoxes;
 }
