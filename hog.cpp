@@ -75,7 +75,7 @@ Mat borderTracing(Mat src) {
 	return contour;
 }
 
-void showHistogram(const string& name, int* hist, const int  hist_cols, const int hist_height)
+int showHistogram(const string& name, int* hist, const int  hist_cols, const int hist_height)
 {
 	Mat imgHist(hist_height, hist_cols, CV_8UC3, CV_RGB(255, 255, 255)); // constructs a white image
 
@@ -87,17 +87,29 @@ void showHistogram(const string& name, int* hist, const int  hist_cols, const in
 	double scale = 1.0;
 	scale = (double)hist_height / max_hist;
 	int baseline = hist_height - 1;
-
+	int edges = 0;
 	for (int x = 0; x < hist_cols; x++) {
 		Point p1 = Point(x, baseline);
 		Point p2 = Point(x, baseline - cvRound(hist[x] * scale));
+		if (cvRound(hist[x] * scale) > 15)
+			edges++;
 		line(imgHist, p1, p2, CV_RGB(255, 0, 255)); // histogram bins colored in magenta
 	}
 
 	imshow(name, imgHist);
+	return edges;
 }
 
-bool hog(Mat src) {
+Mat contours(Mat src) {
+	vector<vector<Point>> contours;
+	vector<Vec4i> hierarchy;
+	findContours(src, contours, hierarchy, RETR_EXTERNAL, CHAIN_APPROX_NONE);
+	Mat img(src.rows, src.cols, CV_8UC1, Scalar(0));
+	drawContours(img, contours, -1, Scalar(255), 1);
+	return img;
+}
+
+int hog(Mat src) {
 	vector<int> hist(180);
 	imshow("border", src);
 	pair<Mat, Mat> G = gradient(src);
@@ -110,18 +122,15 @@ bool hog(Mat src) {
 				hist[val / 2]++;
 			}
 		}
-	showHistogram("hist", hist.data(), 180, 100);
-	return true;
+	return showHistogram("hist", hist.data(), 180, 100);
 }
 
 vector<Rect> checkHogs(Mat src, vector<Rect> boxes) {
 	vector<Rect> finalBoxes;
+	Mat img = contours(src);
 
-	for (Rect box : boxes) {
-		Mat cropped(src, box);
-		if (hog(borderTracing(cropped)))
+	for (Rect box : boxes) 
+		if (hog(Mat(img, box)) < 15)
 			finalBoxes.push_back(box);
-	}
-
 	return finalBoxes;
 }
