@@ -232,8 +232,6 @@ Mat nonMax_gradient(Mat src) {
 	return Gnms;
 }
 
-Mat canny(Mat src, int C) {
-	Mat cn(src.rows, src.cols, CV_8UC1);
-	extractChannel(src, cn, C);
-	return edge_linking(adaptive_th(nonMax_gradient(cn)));
+Mat canny(Mat src) {
+	return edge_linking(adaptive_th(nonMax_gradient(src)));
 }
